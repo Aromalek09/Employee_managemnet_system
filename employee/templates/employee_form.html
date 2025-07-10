@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Employee Entry</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+    <div class="container-fluid">
+      <!-- Left: Brand -->
+      <a class="navbar-brand" href="/">EmployeeApp</a>
+  
+      <!-- Toggler for mobile -->
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+        aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+  
+      <!-- Navbar Content -->
+      <div class="collapse navbar-collapse justify-content-between" id="navbarNav">
+        <!-- Center: Home -->
+        <ul class="navbar-nav mx-auto">
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="/employee/form/builder/">Home</a>
+          </li>
+        </ul>
+  
+        <!-- Right: Profile & Change Password -->
+        <ul class="navbar-nav">
+          <li class="nav-item">
+            <a class="nav-link" href="/employee/profile/">Profile</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/employee/change-password/">Change Password</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+  
+
+<div class="container mt-5">
+  <div class="card shadow p-4">
+    <h3 class="mb-4">Create Employee</h3>
+    <!-- Hidden CSRF token for JavaScript -->
+    {% csrf_token %}
+    <form id="employeeForm"></form>
+    <div class="mt-3">
+      <button class="btn btn-primary" onclick="submitEmployee()">Submit</button>
+      <button class="btn btn-secondary" onclick="cancelEdit()" id="cancelBtn" style="display: none;">Cancel Edit</button>
+    </div>
+  </div>
+
+  <hr class="my-5">
+
+  <div class="card shadow p-4">
+    <h4>Employee List</h4>
+    <div class="table-responsive mt-3">
+      <table class="table table-bordered" id="employeeTable">
+        <thead>
+          <tr id="employeeTableHead"></tr>
+        </thead>
+        <tbody id="employeeTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const formId = "{{ form_id }}";
+
+  const employeeForm = document.getElementById("employeeForm");
+  const employeeList = document.getElementById("employeeList");
+
+  let formFields = [];
+
+  // Load dynamic form fields from backend
+  function loadFormFields() {
+    fetch("http://localhost:8000/employee/form/list/", {
+      headers: { 
+        "Content-Type": "application/json"
+      }
+    })
+    .then(res => res.json())
+    .then(forms => {
+      const form = forms.find(f => f.id == formId);
+      if (!form) return;
+
+      formFields = form.fields.map(f => f.label);
+
+      // Render form inputs
+      form.fields.forEach(field => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "mb-3";
+
+        const label = document.createElement("label");
+        label.innerText = field.label;
+        label.className = "form-label";
+
+        const input = document.createElement("input");
+        input.name = field.label;
+        input.type = field.field_type;
+        input.className = "form-control";
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(input);
+        employeeForm.appendChild(wrapper);
+      });
+
+      // Render employee table header
+      renderEmployeeTableHead();
+      // Load employees after fields are loaded
+      loadEmployees();
+    });
+  }
+
+  function renderEmployeeTableHead() {
+    const headRow = document.getElementById("employeeTableHead");
+    headRow.innerHTML = "";
+    formFields.forEach(label => {
+      const th = document.createElement("th");
+      th.innerText = label;
+      headRow.appendChild(th);
+    });
+    // Add actions column
+    const th = document.createElement("th");
+    th.innerText = "Actions";
+    headRow.appendChild(th);
+  }
+
+  // Submit form data as JSON
+  function submitEmployee() {
+    const inputs = employeeForm.querySelectorAll("input");
+    const data = {};
+    inputs.forEach(input => data[input.name] = input.value);
+
+    fetch("http://localhost:8000/employee/employee/create/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value
+      },
+      body: JSON.stringify({ form: formId, data: data })
+    })
+    .then(res => res.json())
+    .then(resp => {
+      alert("Employee created!");
+      loadEmployees();
+      employeeForm.reset();
+    });
+  }
+
+  // Load employee list
+  function loadEmployees() {
+    const tableBody = document.getElementById("employeeTableBody");
+    tableBody.innerHTML = "";
+    fetch("http://localhost:8000/employee/employee/list/", {
+      headers: { 
+        "Content-Type": "application/json"
+      }
+    })
+    .then(res => res.json())
+    .then(records => {
+      records.forEach(emp => {
+        const tr = document.createElement("tr");
+        formFields.forEach(label => {
+          const td = document.createElement("td");
+          td.innerText = emp.data[label] !== undefined ? emp.data[label] : "";
+          tr.appendChild(td);
+        });
+        // Actions column
+        const td = document.createElement("td");
+        td.innerHTML = `
+          <button class="btn btn-primary btn-sm me-2" onclick="editEmployee(${emp.id})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteEmployee(${emp.id})">Delete</button>
+        `;
+        tr.appendChild(td);
+        tableBody.appendChild(tr);
+      });
+    });
+  }
+
+  // Edit an employee
+  function editEmployee(id) {
+    // Get employee data
+    fetch(`http://localhost:8000/employee/employee/list/`, {
+      headers: { 
+        "Content-Type": "application/json"
+      }
+    })
+    .then(res => res.json())
+    .then(records => {
+      const employee = records.find(emp => emp.id === id);
+      if (!employee) return;
+
+      // Fill the form with employee data
+      const inputs = employeeForm.querySelectorAll("input");
+      inputs.forEach(input => {
+        if (employee.data[input.name] !== undefined) {
+          input.value = employee.data[input.name];
+        }
+      });
+
+      // Change submit button to update
+      const submitBtn = document.querySelector('button[onclick="submitEmployee()"]');
+      submitBtn.textContent = "Update Employee";
+      submitBtn.onclick = () => updateEmployee(id);
+      
+      // Show cancel button
+      document.getElementById("cancelBtn").style.display = "inline-block";
+      
+      // Scroll to form
+      employeeForm.scrollIntoView({ behavior: 'smooth' });
+    });
+  }
+
+  // Update employee function
+  function updateEmployee(id) {
+    const inputs = employeeForm.querySelectorAll("input");
+    const data = {};
+    inputs.forEach(input => data[input.name] = input.value);
+
+    fetch(`http://localhost:8000/employee/employee/update/${id}/`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value
+      },
+      body: JSON.stringify({ form: formId, data: data })
+    })
+    .then(res => res.json())
+    .then(resp => {
+      alert("Employee updated!");
+      loadEmployees();
+      employeeForm.reset();
+      
+      // Reset submit button
+      const submitBtn = document.querySelector('button[onclick="updateEmployee(' + id + ')"]');
+      submitBtn.textContent = "Submit";
+      submitBtn.onclick = submitEmployee;
+
+      // Hide cancel button
+      document.getElementById("cancelBtn").style.display = "none";
+    });
+  }
+
+  // Cancel edit function
+  function cancelEdit() {
+    // Reset form
+    employeeForm.reset();
+    
+    // Reset submit button
+    const submitBtn = document.querySelector('button[onclick^="updateEmployee"]');
+    if (submitBtn) {
+      submitBtn.textContent = "Submit";
+      submitBtn.onclick = submitEmployee;
+    }
+    
+    // Hide cancel button
+    document.getElementById("cancelBtn").style.display = "none";
+  }
+
+  // Delete an employee
+  function deleteEmployee(id) {
+    if (!confirm("Are you sure you want to delete this employee?")) return;
+    
+    fetch(`http://localhost:8000/employee/employee/delete/${id}/`, {
+      method: "DELETE",
+      headers: { 
+        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value
+      }
+    })
+    .then(() => {
+      alert("Employee deleted!");
+      loadEmployees();
+    });
+  }
+
+console.log("Form ID:", "{{ form_id }}");
+
+  // Init on load
+  loadFormFields();
+</script>
+
+</body>
+</html>

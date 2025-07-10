@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dynamic Form Builder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- SortableJS -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+  <style>
+    body {
+      background-color: #f8f9fa;
+      height: 100vh;
+    }
+    .field-box {
+      border: 1px solid #ccc;
+      padding: 10px 15px;
+      margin-bottom: 8px;
+      border-radius: 5px;
+      background-color: #fff;
+      cursor: move;
+    }
+    .card {
+      border-radius: 1rem;
+    }
+    .navbar {
+      margin-bottom: 2rem;
+    }
+  </style>
+</head>
+<body class="d-flex align-items-center justify-content-center">
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+  <div class="container-fluid">
+    <!-- Left: Brand -->
+    <a class="navbar-brand" href="/">EmployeeApp</a>
+
+    <!-- Toggler for mobile -->
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+      aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <!-- Navbar Content -->
+    <div class="collapse navbar-collapse justify-content-between" id="navbarNav">
+      <!-- Center: Home -->
+      <ul class="navbar-nav mx-auto">
+        <li class="nav-item">
+          <a class="nav-link active" aria-current="page" href="/employee/form/builder/">Home</a>
+        </li>
+      </ul>
+
+      <!-- Right: Profile & Change Password -->
+      <ul class="navbar-nav">
+        <li class="nav-item">
+          <a class="nav-link" href="/employee/profile/">Profile</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/employee/change-password/">Change Password</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Spacer for fixed navbar -->
+<div style="height: 70px;"></div>
+
+<!-- Main Card -->
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-10 col-lg-8">
+      <div class="card shadow-lg p-4">
+        <h3 class="text-center mb-4">Employee Detail Form</h3>
+        
+        <!-- Hidden CSRF token for JavaScript -->
+        {% csrf_token %}
+
+        <!-- Go to Employee Form Button -->
+        <div class="d-flex justify-content-end mb-3">
+          <button class="btn btn-success" onclick="goToEmployeeForm()">Go to Employee Form</button>
+        </div>
+
+        <!-- Field Input Section -->
+        <div class="row g-2 mb-3">
+          <div class="col-md-6">
+            <input type="text" class="form-control" id="label" placeholder="Label (e.g. Full Name)">
+          </div>
+          <div class="col-md-4">
+            <select class="form-select" id="fieldType">
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+              <option value="password">Password</option>
+            </select>
+          </div>
+          <div class="col-md-2 d-grid">
+            <button class="btn btn-primary" onclick="addField()">Add</button>
+          </div>
+        </div>
+
+        <!-- Field List -->
+        <ul id="fieldList" class="list-unstyled mb-3"></ul>
+
+        <!-- Action Buttons -->
+        <div class="d-flex justify-content-between">
+          <button class="btn btn-success" onclick="saveAllFields()">Save All Fields</button>
+          <button class="btn btn-outline-secondary" onclick="saveAllOrder()">Save Order</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Sortable.js for drag and drop -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+<script>
+  const formId = 1; // Set this dynamically if needed
+  const fieldList = document.getElementById("fieldList");
+
+  // Add new field to UI
+  function addField() {
+    const label = document.getElementById("label").value;
+    const type = document.getElementById("fieldType").value;
+    if (!label) return alert("Label is required");
+
+    const li = document.createElement("li");
+    li.className = "field-box";
+    li.setAttribute("data-label", label);
+    li.setAttribute("data-type", type);
+    li.innerText = `${label} (${type})`;
+    fieldList.appendChild(li);
+
+    document.getElementById("label").value = "";
+  }
+
+  // Save only the last field
+  function saveLastField() {
+    const items = document.querySelectorAll("#fieldList li");
+    if (!items.length) return alert("No fields to save");
+    const el = items[items.length - 1];
+
+    const payload = {
+      label: el.getAttribute("data-label"),
+      field_type: el.getAttribute("data-type"),
+      order: items.length - 1,
+      form: formId
+    };
+
+    fetch("http://localhost:8000/employee/form/fields/add/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      alert("Field saved to backend!");
+      loadFields();
+    });
+  }
+
+  // Load existing fields
+  function loadFields() {
+    fieldList.innerHTML = "";
+    fetch(`http://localhost:8000/employee/form/list/`, {
+      headers: {
+        "Content-Type": "application/json"
+      }
+    })
+    .then(res => res.json())
+    .then(forms => {
+      const form = forms.find(f => f.id === formId);
+      if (!form) return;
+      form.fields.forEach(field => {
+        const li = document.createElement("li");
+        li.className = "field-box d-flex justify-content-between align-items-center";
+        li.setAttribute("data-label", field.label);
+        li.setAttribute("data-type", field.field_type);
+        li.setAttribute("data-id", field.id);
+        li.innerHTML = `
+          <span>${field.label} (${field.field_type})</span>
+          <button class="btn btn-sm btn-danger ms-2" onclick="deleteField(${field.id}, this)">Delete</button>
+        `;
+        fieldList.appendChild(li);
+      });
+    });
+  }
+
+  // Save all reordered fields
+  function saveAllOrder() {
+    const items = document.querySelectorAll("#fieldList li");
+    items.forEach((el, index) => {
+      const id = el.getAttribute("data-id");
+      if (!id) return;
+
+      fetch(`http://localhost:8000/employee/update-field-order/${id}/`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({ order: index })
+      });
+    });
+    alert("Order saved!");
+  }
+
+  // Save all fields in one go
+  function saveAllFields() {
+    const items = document.querySelectorAll("#fieldList li");
+    if (!items.length) return alert("No fields to save!");
+
+    const fields = [];
+    items.forEach((el, index) => {
+      fields.push({
+        label: el.getAttribute("data-label"),
+        field_type: el.getAttribute("data-type"),
+        order: index,
+        form: formId
+      });
+    });
+
+    fetch("http://localhost:8000/employee/form/fields/save-multiple/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value
+      },
+      body: JSON.stringify({ fields: fields })
+    })
+    .then(res => res.json())
+    .then(data => {
+      alert("All fields saved!");
+      loadFields();
+    });
+  }
+
+  // Delete field
+  function deleteField(fieldId, btn) {
+    if (!confirm("Are you sure you want to delete this field?")) return;
+    fetch(`http://localhost:8000/employee/form/fields/delete/${fieldId}/`, {
+      method: "DELETE",
+      headers: {
+        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value
+      }
+    })
+    .then(res => {
+      if (res.status === 204) {
+        btn.closest("li").remove();
+      } else {
+        alert("Failed to delete field.");
+      }
+    });
+  }
+
+  // Navigate to employee form page
+  function goToEmployeeForm() {
+    window.location.href = `/employee/form/ui/?form_id=${formId}`;
+  }
+
+  // Enable drag and drop
+  new Sortable(fieldList, {
+    animation: 150
+  });
+
+  // Load fields on page load
+  loadFields();
+</script>
+
+</body>
+</html>
